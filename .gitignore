@@ -1,6 +1,84 @@
+# Python virtual environments
 venv/
-__pycache__/
-*.pyc
+.venv/
+
+# Environment variables and secrets
 .env
+.env.local
+
+# Keep the environment template
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checking and linting
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# Local data
+data/raw/*
+data/processed/*
+
+# Keep data directories in Git
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Airflow local files
+airflow.db
+airflow.cfg
+standalone_admin_password.txt
+
+# Spark temporary files
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Environment and build files
+build/
+dist/
+*.egg-info/
+
+# IDE settings
 .vscode/
+.idea/
+
+# Operating system files
 .DS_Store
+Thumbs.db
+
+# Docker overrides
+docker-compose.override.yml
+
+# Machine learning artifacts
+mlruns/
+artifacts/
+models/
+
+# Elasticsearch local data
+elasticsearch-data/
+
+# PostgreSQL local data
+postgres-data/
+
+# Redis local data
+redis-data/
