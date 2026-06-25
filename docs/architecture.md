@@ -213,3 +213,104 @@ The same Article model will be used by:
 * FastAPI
 * Streamlit
 * Social-card generation
+
+## Current Architecture — Step 5
+
+Step 5 added the reusable HTTP layer and the first external news provider.
+
+```mermaid
+flowchart TD
+    A[GDELT Search Query] --> B[GdeltSearchRequest]
+
+    B --> C[Validate Query]
+    B --> D[Validate Record Limit]
+    B --> E[Validate Timespan]
+
+    C --> F[GdeltNewsProvider]
+    D --> F
+    E --> F
+
+    F --> G[AsyncNewsHttpClient]
+
+    H[HTTP Settings] --> G
+    I[Logging System] --> G
+    I --> F
+
+    G --> J[HTTPX AsyncClient]
+    J --> K[GDELT DOC API]
+
+    K --> L[JSON Response]
+
+    L --> M[Provider Response Validation]
+
+    M --> N[Extract Article Records]
+    N --> O[Map GDELT Fields]
+
+    O --> P[NewsSource Model]
+    O --> Q[Article Model]
+
+    P --> R[Pydantic Validation]
+    Q --> R
+
+    R --> S[Validated Article List]
+
+    T[HTTP Client Tests] --> G
+    U[GDELT Provider Tests] --> F
+    V[GDELT JSON Fixture] --> F
+```
+
+### HTTP Request Flow
+
+```text
+Provider
+   ↓
+AsyncNewsHttpClient
+   ↓
+Send HTTP request
+   ↓
+Timeout or network error?
+   ├── Yes → Retry
+   └── No
+         ↓
+Validate status
+         ↓
+Decode JSON or return text
+```
+
+### Provider Flow
+
+```text
+Search parameters
+      ↓
+Provider-specific request
+      ↓
+External news service
+      ↓
+Provider-specific response
+      ↓
+Standard Article objects
+```
+
+### Current Provider Support
+
+```text
+GDELT → Implemented
+RSS   → Planned
+News API → Planned
+Other trusted feeds → Planned
+```
+
+### Future Integration
+
+Validated articles will later move to:
+
+* Raw article storage
+* Kafka
+* Duplicate detection
+* PySpark processing
+* PostgreSQL
+* Elasticsearch
+* AI classification
+* AI summarization
+* FastAPI
+* Streamlit
