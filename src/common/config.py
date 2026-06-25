@@ -18,6 +18,16 @@ class Settings(BaseSettings):
     app_env: Literal["development", "testing", "production"] = "development"
     app_debug: bool = True
 
+    # Logging
+    log_level: Literal[
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "CRITICAL",
+    ] = "INFO"
+    log_file: str = "logs/world_news_ai.log"
+
     # News sources
     gdelt_base_url: str = "https://api.gdeltproject.org/api/v2/doc/doc"
     news_api_key: str = ""
