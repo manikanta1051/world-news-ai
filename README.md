@@ -2,6 +2,8 @@
 
 World News AI is a data engineering and artificial intelligence project that collects global news from multiple sources, processes and classifies articles, detects duplicate stories, identifies trending events, and provides searchable news through an API and dashboard.
 
+The project is being developed step by step using production-style practices such as structured configuration, centralized logging, data validation, automated testing, documentation, and modular application design.
+
 ## Project Goals
 
 * Collect current global news from multiple sources.
@@ -17,7 +19,7 @@ World News AI is a data engineering and artificial intelligence project that col
 * Generate shareable social-media news cards.
 * Build a production-style, monitored data pipeline.
 
-## Primary Categories
+## Primary News Categories
 
 1. Politics & Diplomacy
 2. Defence & Security
@@ -33,7 +35,45 @@ World News AI is a data engineering and artificial intelligence project that col
 12. Society & Culture
 13. Sports
 
-Trending and Breaking are dynamic labels rather than permanent categories.
+Trending and Breaking are dynamic article labels rather than permanent news categories.
+
+## Planned System Architecture
+
+```text
+News Sources
+     |
+     v
+Data Ingestion
+     |
+     v
+Raw News Storage
+     |
+     v
+Data Cleaning and Validation
+     |
+     v
+Duplicate Detection
+     |
+     v
+News Classification
+     |
+     v
+AI Summarization
+     |
+     v
+Entity and Location Extraction
+     |
+     v
+Trending and Breaking Scoring
+     |
+     v
+Processed News Storage
+     |
+     +-------------------+
+     |                   |
+     v                   v
+Search API         Analytics Dashboard
+```
 
 ## Planned User Features
 
@@ -50,6 +90,7 @@ Users will be able to:
 * View AI-generated summaries.
 * View related articles covering the same event.
 * View trending and breaking-news labels.
+* View news analytics and category trends.
 
 ### Copy Feature
 
@@ -65,10 +106,10 @@ Example copied content:
 
 ```text
 Headline:
-India announces a new energy infrastructure project
+India announces a new renewable energy project
 
 Summary:
-The government announced a major energy project intended to improve electricity generation and energy security.
+The government announced a major renewable energy project intended to improve electricity generation and energy security.
 
 Category:
 Energy
@@ -80,28 +121,441 @@ Read more:
 https://example.com/article
 ```
 
-## Completed Steps
+### Social-Media Card Feature
+
+The application will support shareable social-media news cards containing:
+
+* Headline
+* Short summary
+* Category
+* Source
+* Publication date
+* Country or location
+* Article image
+* Share caption
+* Article link
+
+## Current Project Structure
+
+```text
+World_News_AI/
+|
+|-- docs/
+|   |-- architecture.md
+|   |-- step-02-configuration.md
+|   |-- step-03-logging.md
+|   `-- step-04-news-data-models.md
+|
+|-- logs/
+|
+|-- src/
+|   |-- common/
+|   |   |-- config.py
+|   |   `-- logging_config.py
+|   |
+|   |-- models/
+|   |   |-- __init__.py
+|   |   |-- article.py
+|   |   |-- country.py
+|   |   |-- enums.py
+|   |   `-- source.py
+|   |
+|   `-- main.py
+|
+|-- tests/
+|   |-- fixtures/
+|   |   `-- sample_article.json
+|   |
+|   `-- unit/
+|       |-- test_config.py
+|       |-- test_logging_config.py
+|       `-- test_models.py
+|
+|-- .env.example
+|-- .gitignore
+|-- README.md
+`-- requirements.txt
+```
+
+## Completed Development Steps
+
+### Step 1: Project Foundation
+
+The initial project structure was created with separate folders for:
+
+* Application source code
+* Unit tests
+* Test fixtures
+* Documentation
+* Configuration
+* Logs
+
+### Step 2: Centralized Configuration
+
+The project includes centralized configuration management for:
+
+* Application environment
+* Debug mode
+* Logging settings
+* Environment variables
+* Default configuration values
+* Configuration validation
+
+Environment variables are loaded from a local `.env` file.
+
+The `.env.example` file documents the required configuration fields without exposing real credentials.
 
 ### Step 3: Centralized Application Logging
 
-The project currently includes:
+The project includes centralized logging with:
 
 * Console logging
 * Rotating file logging
+* Configurable log levels
+* Configurable log file paths
 * Application startup logging
+* Prevention of duplicate log handlers
 * Automated logging tests
 
-## Next Step
+The rotating file handler prevents application log files from growing without limits.
 
 ### Step 4: News Categories and Article Data Models
 
-Create the news category definitions and article data models.
+The project includes validated models for news data.
+
+Implemented components include:
+
+* Standard news categories
+* Dynamic article labels
+* Source-type definitions
+* Sentiment labels
+* ISO country-code normalization
+* Country-name lookup
+* News-source model
+* Complete article model
+* Social-media card model
+* URL validation
+* Publication date validation
+* Keyword normalization
+* Duplicate keyword removal
+* Duplicate country-code removal
+* Article JSON fixture
+* Automated model validation tests
+
+## Data Models
+
+### NewsSource
+
+The news-source model stores information such as:
+
+* Source name
+* Source type
+* Homepage URL
+* Country code
+* Credibility score
+
+Example source types include:
+
+* RSS
+* REST API
+* Website
+* Streaming source
+
+### Article
+
+The article model stores fields such as:
+
+* Article ID
+* Title
+* Description
+* Original article URL
+* Image URL
+* Source
+* Author
+* Publication time
+* Primary category
+* Article labels
+* Sentiment
+* Country codes
+* Keywords
+* AI summary
+* Share caption
+
+### SocialCardData
+
+The social-media card model contains formatted data used to generate shareable news cards.
+
+It can include:
+
+* Headline
+* Summary
+* Category
+* Source
+* Country
+* Image
+* Publication date
+* Share caption
+* Article URL
+
+## Article Validation
+
+The models validate and normalize incoming news data.
+
+Examples include:
+
+```text
+"in"       -> "IN"
+" us "     -> "US"
+```
+
+Duplicate country codes are removed:
+
+```text
+["in", "US", "in"]
+```
+
+becomes:
+
+```text
+["IN", "US"]
+```
+
+Duplicate keywords are also removed without considering letter case:
+
+```text
+[
+    "Renewable Energy",
+    "India",
+    "renewable energy"
+]
+```
+
+becomes:
+
+```text
+[
+    "Renewable Energy",
+    "India"
+]
+```
+
+## Installation
+
+### 1. Clone the repository
+
+```powershell
+git clone <repository-url>
+cd World_News_AI
+```
+
+### 2. Create a virtual environment
+
+```powershell
+python -m venv venv
+```
+
+### 3. Activate the virtual environment
+
+Using PowerShell:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+After activation, the terminal should display:
+
+```text
+(venv)
+```
+
+### 4. Install dependencies
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+### 5. Create the local environment file
+
+Copy `.env.example` to `.env`:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Update the `.env` file with local configuration values.
+
+Do not commit the real `.env` file because it may contain API keys, passwords, or other secrets.
+
+## Running the Application
+
+Run the main application module from the project root:
+
+```powershell
+python -m src.main
+```
+
+This verifies that:
+
+* Configuration loads correctly.
+* Logging initializes correctly.
+* Application startup messages are generated.
+
+## Running Tests
+
+Run all tests:
+
+```powershell
+python -m pytest -v
+```
+
+Run configuration tests:
+
+```powershell
+python -m pytest tests/unit/test_config.py -v
+```
+
+Run logging tests:
+
+```powershell
+python -m pytest tests/unit/test_logging_config.py -v
+```
+
+Run model tests:
+
+```powershell
+python -m pytest tests/unit/test_models.py -v
+```
+
+## Example Article Model
+
+```python
+from datetime import datetime, timezone
+
+from src.models import (
+    Article,
+    ArticleLabel,
+    NewsCategory,
+    NewsSource,
+    SentimentLabel,
+    SourceType,
+)
+
+source = NewsSource(
+    name="Reuters",
+    source_type=SourceType.RSS,
+    homepage_url="https://www.reuters.com",
+    country_code="GB",
+    credibility_score=95,
+)
+
+article = Article(
+    title="India announces a new renewable energy project",
+    description=(
+        "The government announced a major project "
+        "to improve renewable energy production."
+    ),
+    url="https://www.reuters.com/world/example-article",
+    image_url="https://www.reuters.com/example-image.jpg",
+    source=source,
+    author="Example Reporter",
+    published_at=datetime.now(timezone.utc),
+    primary_category=NewsCategory.ENERGY,
+    labels={
+        ArticleLabel.BREAKING,
+        ArticleLabel.TRENDING,
+    },
+    sentiment=SentimentLabel.NEUTRAL,
+    country_codes=["IN", "US"],
+    keywords=[
+        "Renewable Energy",
+        "India",
+    ],
+    share_caption=(
+        "India announces a major renewable energy project."
+    ),
+)
+
+print(article.model_dump_json(indent=2))
+```
+
+## Development Practices
+
+The project follows these development practices:
+
+* Modular Python source code
+* Environment-based configuration
+* Centralized application logging
+* Strong data validation
+* Automated unit testing
+* Reusable data models
+* Test fixtures
+* Step-by-step technical documentation
+* Git version control
+* Clear commit history
+* Separation of application code and tests
+
+## Next Step
+
+### Step 5: News Source Configuration
+
+The next step will create the initial news-source configuration used by the ingestion pipeline.
 
 This step will define:
 
-* Standard article fields
-* Primary news categories
-* Countries and locations
-* Trending and breaking labels
-* Article validation rules
-* Social-media card fields
+* Supported news providers
+* RSS feed URLs
+* REST API source details
+* Source countries
+* Source languages
+* Source categories
+* Source credibility settings
+* Source activation status
+* Source configuration validation
+* Automated source configuration tests
+
+## Future Development
+
+Planned future steps include:
+
+* RSS news ingestion
+* REST API ingestion
+* Raw article storage
+* Article cleaning and normalization
+* Duplicate article detection
+* Related-story grouping
+* AI summarization
+* Named-entity extraction
+* Country and location extraction
+* Trending-score calculation
+* Breaking-news detection
+* Semantic search
+* FastAPI backend
+* Interactive dashboard
+* Social-media news-card generation
+* Monitoring and alerting
+* Docker deployment
+* CI/CD pipeline
+* Cloud deployment
+
+## Project Status
+
+The project is currently under active development.
+
+Completed:
+
+* Project structure
+* Centralized configuration
+* Centralized logging
+* News categories
+* Country utilities
+* Source model
+* Article model
+* Social-media card model
+* Model validation
+* Unit tests
+* Technical documentation
+
+In progress:
+
+* News source configuration
+* News ingestion pipeline

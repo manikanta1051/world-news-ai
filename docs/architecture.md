@@ -127,3 +127,89 @@ The same logger will later be used by:
 * FastAPI endpoints
 * Streamlit dashboard
 * Social-media card generation
+
+## Current Architecture — Step 4
+
+Step 4 added standardized news categories and validated article data models.
+
+```mermaid
+flowchart TD
+    A[Raw News Data] --> B[Article Model]
+
+    C[News Category Enum] --> B
+    D[Article Label Enum] --> B
+    E[Sentiment Enum] --> B
+    F[Source Type Enum] --> G[NewsSource Model]
+    H[Country Utilities] --> G
+    H --> B
+
+    G --> B
+    I[SocialCardData Model] --> B
+
+    B --> J[Pydantic Validation]
+
+    J --> J1[URL Validation]
+    J --> J2[Country Normalization]
+    J --> J3[Keyword Normalization]
+    J --> J4[UTC Date Conversion]
+    J --> J5[Category Validation]
+    J --> J6[Content Hash Validation]
+
+    J --> K[Validated Article]
+
+    K --> L[Future Kafka Pipeline]
+    K --> M[Future PostgreSQL Storage]
+    K --> N[Future Elasticsearch Index]
+    K --> O[Future AI Processing]
+    K --> P[Future FastAPI]
+    K --> Q[Future Streamlit Dashboard]
+
+    R[Pytest Model Tests] --> B
+    S[Sample Article JSON] --> B
+```
+
+### Model Relationship
+
+```text
+NewsCategory
+ArticleLabel
+SentimentLabel
+SourceType
+Country utilities
+        ↓
+NewsSource
+SocialCardData
+        ↓
+Article
+        ↓
+Validated application data
+```
+
+### Current Article Flow
+
+```text
+Article dictionary or JSON
+        ↓
+Pydantic Article model
+        ↓
+Validation and normalization
+        ↓
+Validated Article object
+        ↓
+JSON serialization or future processing
+```
+
+### Future Use
+
+The same Article model will be used by:
+
+* News ingestion
+* Kafka messages
+* PySpark processing
+* AI classification
+* AI summarization
+* PostgreSQL
+* Elasticsearch
+* FastAPI
+* Streamlit
+* Social-card generation

@@ -1,0 +1,47 @@
+{
+  "title": "India announces a new renewable energy project",
+  "description": "The government announced a major project to increase renewable energy production.",
+  "content": "The project will expand solar and wind power infrastructure across multiple regions.",
+  "summary": "India announced a renewable energy project focused on expanding solar and wind power capacity.",
+  "url": "https://example.com/world/india-energy-project",
+  "canonical_url": "https://example.com/world/india-energy-project",
+  "image_url": "https://example.com/images/energy-project.jpg",
+  "source": {
+    "name": "Example News",
+    "source_type": "RSS",
+    "homepage_url": "https://example.com",
+    "country_code": "in",
+    "credibility_score": 85
+  },
+  "author": "Example Reporter",
+  "published_at": "2026-06-25T14:30:00+05:30",
+  "primary_category": "Energy",
+  "labels": [
+    "Breaking",
+    "Trending"
+  ],
+  "sentiment": "Neutral",
+  "country_codes": [
+    "in",
+    "US",
+    "in"
+  ],
+  "keywords": [
+    "Renewable Energy",
+    "India",
+    "renewable energy",
+    ""
+  ],
+  "language_code": "en",
+  "ai_processed": true,
+  "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "share_caption": "India announces a major renewable energy project.",
+  "social_card": {
+    "headline": "India Announces Renewable Energy Project",
+    "summary": "The project will expand solar and wind power production.",
+    "background_image_url": "https://example.com/images/energy-project.jpg",
+    "template_name": "standard",
+    "generated_image_path": null,
+    "is_generated": false
+  }
+}
