@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss
+    version="2.0"
+    xmlns:media="http://search.yahoo.com/mrss/"
+    xmlns:content="http://purl.org/rss/1.0/modules/content/"
+>
+    <channel>
+        <title>World News AI Test Feed</title>
+        <link>https://example.com</link>
+        <description>RSS test data</description>
+
+        <item>
+            <title>
+                NASA develops new space communication technology
+            </title>
+            <link>
+                https://example.com/technology/space-communication
+            </link>
+            <description>
+                <![CDATA[
+                    <p>NASA is testing a new
+                    <strong>space communication</strong>
+                    system.</p>
+                ]]>
+            </description>
+            <content:encoded>
+                <![CDATA[
+                    <p>The technology may improve communication
+                    between Earth and future spacecraft.</p>
+                ]]>
+            </content:encoded>
+            <author>NASA Technology Team</author>
+            <pubDate>Wed, 24 Jun 2026 14:30:00 GMT</pubDate>
+            <media:content
+                url="https://example.com/images/space-system.jpg"
+                type="image/jpeg"
+                medium="image"
+            />
+        </item>
+
+        <item>
+            <title>
+                Duplicate space communication article
+            </title>
+            <link>
+                https://example.com/technology/space-communication
+            </link>
+            <description>
+                This entry uses the same article URL.
+            </description>
+            <pubDate>Wed, 24 Jun 2026 14:35:00 GMT</pubDate>
+        </item>
+
+        <item>
+            <title>
+                New lunar science mission prepares for launch
+            </title>
+            <link>
+                https://example.com/science/lunar-mission
+            </link>
+            <description>
+                <![CDATA[
+                    <p>A new lunar science mission is preparing
+                    for launch.</p>
+                ]]>
+            </description>
+            <author>Example Science Reporter</author>
+            <pubDate>Tue, 23 Jun 2026 09:00:00 GMT</pubDate>
+            <enclosure
+                url="https://example.com/images/lunar-mission.png"
+                type="image/png"
+            />
+        </item>
+
+        <item>
+            <title></title>
+            <link>
+                https://example.com/invalid/missing-title
+            </link>
+            <description>
+                This article is invalid because its title is empty.
+            </description>
+            <pubDate>Tue, 23 Jun 2026 08:00:00 GMT</pubDate>
+        </item>
+
+        <item>
+            <title>
+                Old space research article
+            </title>
+            <link>
+                https://example.com/archive/old-space-article
+            </link>
+            <description>
+                This entry should be filtered by the timespan.
+            </description>
+            <pubDate>Thu, 01 Jan 2026 10:00:00 GMT</pubDate>
+        </item>
+    </channel>
+</rss>

@@ -494,68 +494,25 @@ The project follows these development practices:
 * Clear commit history
 * Separation of application code and tests
 
-## Next Step
+- Step 5: News-ingestion foundation
+- Reusable asynchronous HTTP client
+- Connection pooling and timeouts
+- Automatic retry handling
+- Project-specific ingestion exceptions
+- Standard news-provider interface
+- Live GDELT news provider
+- GDELT response-to-Article mapping
+- Mocked HTTP and provider tests
 
-### Step 5: News Source Configuration
+### Next Step
 
-The next step will create the initial news-source configuration used by the ingestion pipeline.
+Create an RSS and Atom news-feed provider.
 
-This step will define:
+The RSS ingestion layer will:
 
-* Supported news providers
-* RSS feed URLs
-* REST API source details
-* Source countries
-* Source languages
-* Source categories
-* Source credibility settings
-* Source activation status
-* Source configuration validation
-* Automated source configuration tests
-
-## Future Development
-
-Planned future steps include:
-
-* RSS news ingestion
-* REST API ingestion
-* Raw article storage
-* Article cleaning and normalization
-* Duplicate article detection
-* Related-story grouping
-* AI summarization
-* Named-entity extraction
-* Country and location extraction
-* Trending-score calculation
-* Breaking-news detection
-* Semantic search
-* FastAPI backend
-* Interactive dashboard
-* Social-media news-card generation
-* Monitoring and alerting
-* Docker deployment
-* CI/CD pipeline
-* Cloud deployment
-
-## Project Status
-
-The project is currently under active development.
-
-Completed:
-
-* Project structure
-* Centralized configuration
-* Centralized logging
-* News categories
-* Country utilities
-* Source model
-* Article model
-* Social-media card model
-* Model validation
-* Unit tests
-* Technical documentation
-
-In progress:
-
-* News source configuration
-* News ingestion pipeline
+- Parse RSS and Atom feeds.
+- Support multiple trusted news sources.
+- Convert feed entries into validated Article models.
+- Handle missing and inconsistent feed fields.
+- Reuse the asynchronous HTTP client.
+- Add fixtures and automated tests.
