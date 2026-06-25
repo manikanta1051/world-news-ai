@@ -1,0 +1,30 @@
+{
+  "articles": [
+    {
+      "url": "https://example.com/world/india-renewable-energy",
+      "title": "India expands its renewable energy partnership",
+      "seendate": "20260625T143000Z",
+      "socialimage": "https://example.com/images/energy-project.jpg",
+      "domain": "example.com",
+      "language": "English",
+      "sourcecountry": "India"
+    },
+    {
+      "url": "https://news.example.org/defence/regional-talks",
+      "title": "Regional defence and security talks continue",
+      "seendate": "20260625123000",
+      "socialimage": "not-a-valid-image-url",
+      "language": "English",
+      "sourcecountry": "United States"
+    },
+    {
+      "url": "",
+      "title": "Invalid article that should be skipped",
+      "seendate": "20260625T120000Z",
+      "domain": "invalid.example",
+      "language": "English",
+      "sourcecountry": "India"
+    },
+    "invalid-non-object-result"
+  ]
+}

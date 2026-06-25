@@ -155,8 +155,12 @@ class AsyncNewsHttpClient:
             )
 
             raise HttpResponseStatusError(
-                url=str(exc.request.url),
-                status_code=exc.response.status_code,
+                (
+                    "HTTP request returned an unexpected status code: "
+                    f"{response.status_code} for {response.url}"
+                ),
+                status_code=response.status_code,
+                url=str(response.url),
             ) from exc
 
         except retryable_errors as exc:
