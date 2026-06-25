@@ -23,3 +23,29 @@ flowchart TD
     G --> G2[Monitoring]
     G --> G3[Airflow]
     G --> G4[Spark]
+    ## Current Architecture — Step 2
+
+Step 2 added a centralized configuration layer.
+
+```mermaid
+flowchart TD
+    A[.env.example] --> B[Local .env File]
+
+    B --> C[src/common/config.py]
+
+    C --> D[Pydantic Settings]
+    D --> E[Load Environment Values]
+    E --> F[Convert Data Types]
+    F --> G[Validate Settings]
+    G --> H[Cached Settings Object]
+
+    H --> I[News Ingestion Module]
+    H --> J[AI Module]
+    H --> K[Database Module]
+    H --> L[Kafka Processing]
+    H --> M[Redis Cache]
+    H --> N[Elasticsearch Search]
+    H --> O[FastAPI Backend]
+    H --> P[Streamlit Dashboard]
+
+    Q[Pytest Configuration Tests] --> D
