@@ -1,4 +1,6 @@
+httpx
 pydantic
 pydantic-settings
 pycountry
 pytest
+tenacity

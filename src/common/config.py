@@ -1,8 +1,8 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,7 +15,11 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "World News AI"
-    app_env: Literal["development", "testing", "production"] = "development"
+    app_env: Literal[
+        "development",
+        "testing",
+        "production",
+    ] = "development"
     app_debug: bool = True
 
     # Logging
@@ -28,8 +32,47 @@ class Settings(BaseSettings):
     ] = "INFO"
     log_file: str = "logs/world_news_ai.log"
 
+    # HTTP client
+    http_timeout_seconds: float = Field(
+        default=20.0,
+        gt=0,
+        le=120,
+    )
+    http_max_connections: int = Field(
+        default=20,
+        ge=1,
+        le=200,
+    )
+    http_max_keepalive_connections: int = Field(
+        default=10,
+        ge=0,
+        le=100,
+    )
+    http_retry_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+    )
+    http_retry_min_wait_seconds: float = Field(
+        default=1.0,
+        ge=0,
+        le=30,
+    )
+    http_retry_max_wait_seconds: float = Field(
+        default=5.0,
+        ge=0,
+        le=60,
+    )
+    http_user_agent: str = Field(
+        default="World-News-AI/0.1",
+        min_length=3,
+        max_length=200,
+    )
+
     # News sources
-    gdelt_base_url: str = "https://api.gdeltproject.org/api/v2/doc/doc"
+    gdelt_base_url: str = (
+        "https://api.gdeltproject.org/api/v2/doc/doc"
+    )
     news_api_key: str = ""
 
     # AI service
@@ -37,7 +80,11 @@ class Settings(BaseSettings):
 
     # PostgreSQL
     postgres_host: str = "localhost"
-    postgres_port: int = Field(default=5432, ge=1, le=65535)
+    postgres_port: int = Field(
+        default=5432,
+        ge=1,
+        le=65535,
+    )
     postgres_db: str = "world_news"
     postgres_user: str = "world_news_user"
     postgres_password: str = ""
@@ -48,7 +95,11 @@ class Settings(BaseSettings):
 
     # Redis
     redis_host: str = "localhost"
-    redis_port: int = Field(default=6379, ge=1, le=65535)
+    redis_port: int = Field(
+        default=6379,
+        ge=1,
+        le=65535,
+    )
 
     # Elasticsearch
     elasticsearch_url: str = "http://localhost:9200"
@@ -60,6 +111,30 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def validate_http_configuration(self) -> Self:
+        """Validate relationships between HTTP settings."""
+
+        if (
+            self.http_max_keepalive_connections
+            > self.http_max_connections
+        ):
+            raise ValueError(
+                "HTTP_MAX_KEEPALIVE_CONNECTIONS cannot be "
+                "greater than HTTP_MAX_CONNECTIONS."
+            )
+
+        if (
+            self.http_retry_min_wait_seconds
+            > self.http_retry_max_wait_seconds
+        ):
+            raise ValueError(
+                "HTTP_RETRY_MIN_WAIT_SECONDS cannot be "
+                "greater than HTTP_RETRY_MAX_WAIT_SECONDS."
+            )
+
+        return self
 
 
 @lru_cache
