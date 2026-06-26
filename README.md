@@ -504,15 +504,43 @@ The project follows these development practices:
 - GDELT response-to-Article mapping
 - Mocked HTTP and provider tests
 
+* Step 6: RSS and Atom news ingestion
+* Validated feed-source registry
+* Official NASA and JPL feed configurations
+* Feed enable and disable controls
+* RSS and Atom parsing with Feedparser
+* HTML description and content cleaning
+* Author, publication-date, and image extraction
+* Query and timespan filtering
+* Per-source article limits
+* URL-based feed-entry deduplication
+* RSS fixtures and automated tests
+
+* Step 7: AWS storage foundation
+* Private Amazon S3 data-lake bucket
+* Raw, processed, rejected, curated, and social-card layers
+* S3 public-access blocking, encryption, and versioning
+* Provider, category, date, country, and state partitions
+* Mocked S3 storage tests
+* Encrypted Amazon RDS PostgreSQL database
+* RDS credentials managed through AWS Secrets Manager
+* PostgreSQL security-group access restricted to the developer IP
+* Async SQLAlchemy and AsyncPG connection layer
+* SSL-required RDS connections
+* Database health check and connection tests
+
 ### Next Step
 
-Create an RSS and Atom news-feed provider.
+Create the PostgreSQL database schema and repository layer.
 
-The RSS ingestion layer will:
+The next step will:
 
-- Parse RSS and Atom feeds.
-- Support multiple trusted news sources.
-- Convert feed entries into validated Article models.
-- Handle missing and inconsistent feed fields.
-- Reuse the asynchronous HTTP client.
-- Add fixtures and automated tests.
+* Add SQLAlchemy ORM models.
+* Create source and article tables.
+* Add countries, Indian states, districts, and cities.
+* Add article-to-location mappings.
+* Add user favorite-country and favorite-state storage.
+* Add Top 10 state-news ranking structures.
+* Create Alembic migrations.
+* Add database repository methods.
+* Apply the first schema migration to Amazon RDS.

@@ -314,3 +314,212 @@ Validated articles will later move to:
 * AI summarization
 * FastAPI
 * Streamlit
+
+## Current Architecture — Step 6
+
+Step 6 added configurable RSS and Atom ingestion.
+
+```mermaid
+flowchart TD
+    A[Feed Registry] --> B[Enabled Feed Source]
+
+    B --> C[RssNewsProvider]
+
+    D[Feed Source Configuration] --> C
+    E[Optional Query] --> C
+    F[Timespan and Record Limit] --> C
+
+    C --> G[AsyncNewsHttpClient]
+    G --> H[RSS or Atom Publisher]
+
+    H --> I[XML Feed Response]
+    I --> J[Feedparser]
+
+    J --> K{Parsing Usable?}
+
+    K -->|No entries| L[Provider Response Error]
+    K -->|Usable entries| M[Process Feed Entries]
+
+    M --> N[Extract Title and URL]
+    M --> O[Clean Description and Content]
+    M --> P[Extract Author and Image]
+    M --> Q[Normalize Publication Date]
+
+    N --> R[Article Model]
+    O --> R
+    P --> R
+    Q --> R
+
+    R --> S[Pydantic Validation]
+
+    S --> T[URL Deduplication]
+    T --> U[Timespan Filtering]
+    U --> V[Query Filtering]
+    V --> W[Source Record Limit]
+
+    W --> X[Validated Article List]
+
+    Y[RSS XML Fixture] --> C
+    Z[Malformed Feed Fixture] --> C
+    AA[Feed Registry Tests] --> A
+    AB[RSS Provider Tests] --> C
+```
+
+### Feed Registry Flow
+
+```text
+Configured feed sources
+        ↓
+Registry validation
+        ├── Unique source IDs
+        └── Unique feed URLs
+        ↓
+Enabled feed sources
+        ↓
+RSS provider
+```
+
+### RSS Article Flow
+
+```text
+RSS or Atom XML
+      ↓
+Feedparser
+      ↓
+Normalized feed entry
+      ↓
+Field extraction
+      ↓
+Article validation
+      ↓
+Duplicate, date and query filtering
+      ↓
+Validated Article object
+```
+
+### Current Ingestion Sources
+
+```text
+GDELT           → Implemented
+RSS and Atom    → Implemented
+Additional APIs → Planned
+```
+
+### Future Storage Flow
+
+```text
+GDELT Articles ─┐
+                ├── Validated Article objects
+RSS Articles ───┘
+                         ↓
+               Future PostgreSQL storage
+                         ↓
+               Future Kafka and search layers
+```
+## Current Architecture — Step 7
+
+Step 7 added the AWS storage and managed PostgreSQL foundation.
+
+```mermaid
+flowchart TD
+    A[GDELT Provider] --> B[Validated and Raw News]
+    C[RSS and Atom Providers] --> B
+
+    B --> D[Amazon S3 Data Lake]
+
+    D --> D1[Raw News]
+    D --> D2[Processed News]
+    D --> D3[Rejected News]
+    D --> D4[Curated News]
+    D --> D5[Social Cards]
+
+    D1 --> E[Provider and Date Partitions]
+    D2 --> F[Provider Category Country State Date Partitions]
+    D3 --> G[Rejected Record and Reason]
+
+    H[AWS CLI Profile or IAM Role] --> I[Boto3 Session]
+    I --> D
+    I --> J[AWS Secrets Manager]
+
+    J --> K[RDS Master Credentials]
+
+    K --> L[SQLAlchemy Async Engine]
+    M[RDS Endpoint Configuration] --> L
+    N[SSL Required] --> L
+
+    L --> O[Amazon RDS PostgreSQL]
+
+    O --> P[Future Sources Table]
+    O --> Q[Future Articles Table]
+    O --> R[Future India States and Districts]
+    O --> S[Future Top 10 State Rankings]
+    O --> T[Future User Preferences]
+
+    U[S3 Unit Tests] --> D
+    V[Database Unit Tests] --> L
+```
+
+### AWS Storage Flow
+
+```text
+News provider response
+        ↓
+Raw response stored in Amazon S3
+        ↓
+Article validation and processing
+        ↓
+Processed or rejected S3 layer
+        ↓
+Structured records in Amazon RDS
+```
+
+### Credential Flow
+
+```text
+Application
+    ↓
+Boto3 session
+    ↓
+AWS Secrets Manager
+    ↓
+RDS username and password
+    ↓
+SQLAlchemy AsyncPG connection
+    ↓
+Amazon RDS PostgreSQL
+```
+
+### India State-News Storage
+
+```text
+India article
+    ↓
+Location detection
+    ├── Country
+    ├── State
+    ├── District
+    └── City
+    ↓
+S3 location partitions
+    ↓
+RDS article-location mappings
+    ↓
+State relevance score
+    ↓
+Top 10 news for each state
+```
+
+### Current AWS Services
+
+```text
+Amazon S3             → Implemented
+Amazon RDS PostgreSQL → Implemented
+AWS Secrets Manager   → Implemented
+AWS IAM profile       → Implemented for development
+AWS Glue              → Planned
+Amazon Athena         → Planned
+AWS Lambda            → Planned
+Amazon SQS            → Planned
+EventBridge Scheduler → Planned
+CloudWatch            → Planned
+```
