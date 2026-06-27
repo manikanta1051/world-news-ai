@@ -533,14 +533,93 @@ The project follows these development practices:
 
 Create the PostgreSQL database schema and repository layer.
 
-The next step will:
+## Current Progress
 
-* Add SQLAlchemy ORM models.
-* Create source and article tables.
-* Add countries, Indian states, districts, and cities.
-* Add article-to-location mappings.
-* Add user favorite-country and favorite-state storage.
-* Add Top 10 state-news ranking structures.
-* Create Alembic migrations.
-* Add database repository methods.
-* Apply the first schema migration to Amazon RDS.
+Completed:
+
+* Step 1: Project foundation and folder structure
+* Step 2: Environment configuration and validation
+* Step 3: Structured application logging
+* Step 4: News article and provider data models
+* Step 5: GDELT news ingestion
+* Step 6: RSS and Atom news ingestion
+* Step 7: AWS storage foundation
+* Private Amazon S3 data-lake storage
+* Raw, processed, rejected, curated, and social-card S3 layers
+* Amazon RDS PostgreSQL database
+* AWS Secrets Manager credential retrieval
+* Async SQLAlchemy and AsyncPG database connection
+* Step 8: Database schema, migrations, and repositories
+* Fourteen PostgreSQL application tables
+* Alembic schema migrations
+* India catalog with 28 states and 8 Union Territories
+* News-source and article repositories
+* Country, state, district, and city mappings
+* User preference storage
+* Maximum two favorite countries per user
+* Favorite Indian states
+* Top 10 state-news ranking structure
+* Unit tests and live Amazon RDS integration testing
+
+## Current AWS Architecture
+
+The project currently uses:
+
+* Amazon S3 for raw, processed, rejected, curated, and social-card storage
+* Amazon RDS PostgreSQL for structured application data
+* AWS Secrets Manager for database credentials
+* AWS IAM and AWS CLI profiles for development access
+* Boto3 for AWS service integration
+* SQLAlchemy and AsyncPG for asynchronous PostgreSQL operations
+* Alembic for version-controlled database migrations
+
+Planned AWS services include:
+
+* AWS Lambda
+* Amazon SQS
+* EventBridge Scheduler
+* AWS Glue
+* Amazon Athena
+* Amazon CloudWatch
+
+## India News Features
+
+The database foundation supports:
+
+* A dedicated India News section
+* Selection of a specific Indian state or Union Territory
+* State-level article relevance
+* Future district- and city-level filtering
+* Favorite Indian states
+* Top 10 news stories for every state
+* Separate rankings by date, category, and ranking window
+
+## Personalization Features
+
+The project supports planned user personalization through:
+
+* Selection of up to two favorite countries
+* Favorite Indian states
+* Future Top 10 trending stories for each selected country
+* Future personalized country and state dashboards
+
+## Next Step
+
+### Step 9 — Ingestion Persistence Pipeline
+
+Step 9 will connect the existing GDELT, RSS, and Atom ingestion providers to Amazon S3 and PostgreSQL.
+
+Planned work:
+
+1. Save original provider responses to the Amazon S3 raw layer.
+2. Normalize provider records into the shared article model.
+3. Create or reuse news-source records.
+4. Detect duplicate articles using URLs and content hashes.
+5. Save valid articles to PostgreSQL.
+6. Save processed article JSON to Amazon S3.
+7. Store rejected records and rejection reasons in Amazon S3.
+8. Create article-country mappings.
+9. Create India state mappings.
+10. Add transaction and failure handling.
+11. Add ingestion-persistence unit tests.
+12. Run a live end-to-end ingestion test.
