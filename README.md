@@ -840,34 +840,496 @@ python -c "from src.services import IngestionPersistenceService, BatchIngestionC
 
 ---
 
+## Project Progress
+
+The World News AI project has completed Steps 1 through 10.
+
+### Completed Steps
+
+1. Project foundation and folder structure
+2. Application configuration and environment management
+3. Structured logging and shared utilities
+4. Core news models and validation
+5. GDELT news ingestion
+6. RSS and Atom feed ingestion
+7. AWS storage and PostgreSQL foundation
+8. Database schema, migrations, repositories, and India location data
+9. Provider-to-storage ingestion persistence pipeline
+10. Scheduled and decoupled ingestion application layer
+
+---
+
+## Current Features
+
+The project currently supports:
+
+- GDELT news collection
+- RSS and Atom feed collection
+- Original provider-response preservation
+- Article validation and normalization
+- Raw news storage in Amazon S3
+- Processed article storage in Amazon S3
+- Rejected-record storage in Amazon S3
+- PostgreSQL article persistence
+- News-source creation and reuse
+- Duplicate detection by URL
+- Duplicate detection by content hash
+- Country relevance mappings
+- Indian-state relevance mappings
+- Batch ingestion statistics
+- Per-record failure handling
+- EventBridge-compatible message contracts
+- SQS-compatible article-processing messages
+- Amazon SQS publishing logic
+- Standard and FIFO queue support
+- Raw-first queued ingestion
+- Lambda-compatible scheduled-ingestion handlers
+- Lambda-compatible SQS handlers
+- SQS partial batch failure responses
+- Article-processing workers
+- JSON message serialization and validation
+- Message schema versioning
+- Alembic database migrations
+- India state and Union Territory seed data
+- User favorite-country storage
+- User favorite-state storage
+- State Top 10 ranking storage
+- Mocked testing without live AWS resources
+
+---
+
+## Current Architecture
+
+```mermaid
+flowchart TD
+    A[EventBridge Scheduler] --> B[ScheduledIngestionMessage]
+
+    B --> C[ScheduledIngestionLambdaHandler]
+
+    C --> D[Provider Resolver]
+
+    D --> E[GDELT Provider]
+    D --> F[RSS and Atom Provider]
+
+    E --> G[ProviderFetchResult]
+    F --> G
+
+    G --> H[QueuedIngestionDispatcher]
+
+    H --> I[Amazon S3 Raw Layer]
+    H --> J[Amazon S3 Rejected Layer]
+    H --> K[ArticleProcessingMessage]
+
+    K --> L[SqsMessagePublisher]
+
+    L --> M[Amazon SQS Processing Queue]
+
+    M --> N[SqsArticleLambdaHandler]
+
+    N --> O[ArticleProcessingWorker]
+
+    O --> P[IngestionPersistenceService]
+
+    P --> Q[Amazon S3 Processed Layer]
+    P --> R[Amazon RDS PostgreSQL]
+
+    R --> R1[News Sources]
+    R --> R2[Articles]
+    R --> R3[Country Mappings]
+    R --> R4[India Location Mappings]
+    R --> R5[User Preferences]
+    R --> R6[State Top 10 Rankings]
+
+    S[AWS Secrets Manager] --> T[SQLAlchemy Async Engine]
+    T --> R
+
+    U[Alembic] --> R
+
+    M --> V[Planned Dead-Letter Queue]
+```
+
+---
+
+## Step 10 Queued-Ingestion Flow
+
+```text
+EventBridge Scheduler
+        ↓
+ScheduledIngestionMessage
+        ↓
+ScheduledIngestionLambdaHandler
+        ↓
+Provider.fetch_batch()
+        ↓
+ProviderFetchResult
+        ├── Original provider payload
+        ├── Validated articles
+        └── Rejected provider records
+        ↓
+QueuedIngestionDispatcher
+        ├── Original payload → Amazon S3 raw layer
+        ├── Rejected records → Amazon S3 rejected layer
+        └── Valid articles → ArticleProcessingMessage
+        ↓
+SqsMessagePublisher
+        ↓
+Amazon SQS
+        ↓
+SqsArticleLambdaHandler
+        ↓
+ArticleProcessingWorker
+        ↓
+IngestionPersistenceService
+        ├── Duplicate detection
+        ├── Processed article → Amazon S3
+        ├── Article → PostgreSQL
+        ├── Country mappings
+        └── Indian-state mappings
+```
+
+---
+
+## Message Contracts
+
+Step 10 provides two primary message contracts.
+
+### Scheduled Ingestion Message
+
+Used for:
+
+```text
+EventBridge Scheduler → Ingestion Lambda
+```
+
+Main fields:
+
+```text
+schema_version
+message_id
+created_at
+provider
+query
+max_records
+timespan
+source_id
+extra_partitions
+```
+
+### Article Processing Message
+
+Used for:
+
+```text
+Ingestion Lambda → Amazon SQS → Worker Lambda
+```
+
+Main fields:
+
+```text
+schema_version
+message_id
+created_at
+provider
+raw_s3_uri
+article_payload
+country_scores
+state_scores
+primary_state_code
+state_detection_method
+retry_count
+```
+
+Message contracts are validated with Pydantic and support JSON serialization and deserialization.
+
+---
+
+## SQS Processing
+
+The current application layer supports:
+
+- Standard queues
+- FIFO queues
+- Message attributes
+- Delay validation
+- FIFO message-group IDs
+- FIFO deduplication IDs
+- Publishing-result validation
+- Publishing-error conversion
+- Partial batch failure responses
+- Individual message retries
+- Duplicate-safe article persistence
+
+The initial AWS deployment is expected to use a standard queue because the article persistence layer already performs duplicate detection.
+
+---
+
+## Lambda-Compatible Handlers
+
+The project includes application handlers for:
+
+```text
+EventBridge Scheduler
+        ↓
+ScheduledIngestionLambdaHandler
+```
+
+and:
+
+```text
+Amazon SQS
+        ↓
+SqsArticleLambdaHandler
+```
+
+The handlers are implemented independently from AWS deployment configuration so they can be tested locally.
+
+---
+
+## Partial Batch Failure Handling
+
+The SQS handler returns an AWS-compatible response:
+
+```json
+{
+  "batchItemFailures": [
+    {
+      "itemIdentifier": "failed-message-id"
+    }
+  ]
+}
+```
+
+This allows only failed records to be retried.
+
+Successful messages in the same Lambda invocation are not intentionally retried.
+
+---
+
+## India News Features
+
+The current design includes:
+
+- Dedicated India News section
+- State and Union Territory catalog
+- District and city database structure
+- Article-to-state mappings
+- Article-to-district mappings
+- Article-to-city mappings
+- Favorite Indian-state selection
+- State-level news feeds
+- Top 10 trending news storage for each Indian state
+
+Automatic state, district, and city detection remains planned.
+
+---
+
+## Personalization Features
+
+The planned personalization flow includes:
+
+- First-time favorite-country selection
+- Maximum of two favorite countries
+- Favorite Indian-state selection
+- Personalized country news feeds
+- Top 10 trending news for each favorite country
+- State-specific Top 10 news feeds
+
+The required database structures are already implemented.
+
+---
+
+## AWS Services
+
+| AWS service | Current status | Purpose |
+|---|---|---|
+| Amazon S3 | Application support implemented | Raw, processed, rejected, curated, and social-card storage |
+| Amazon RDS PostgreSQL | Implemented | Application and news metadata |
+| AWS Secrets Manager | Implemented | PostgreSQL credentials |
+| AWS IAM | Development access configured | Controlled AWS access |
+| Amazon SQS | Application code implemented; infrastructure not created | Decoupled article processing |
+| AWS Lambda | Application handlers implemented; infrastructure not deployed | Scheduled ingestion and article processing |
+| EventBridge Scheduler | Message contract implemented; schedule not created | Scheduled ingestion |
+| Amazon CloudWatch | Planned | Logs, metrics, dashboards, and alarms |
+| AWS Glue | Planned | Large-scale PySpark processing |
+| Amazon Athena | Planned | S3 data analysis |
+
+---
+
+## AWS Deployment Status
+
+The following application components are complete:
+
+```text
+Scheduled message contract
+Article-processing message contract
+SQS publisher
+Queued-ingestion dispatcher
+Article-processing worker
+Scheduled Lambda-compatible handler
+SQS Lambda-compatible handler
+Partial batch failure response
+```
+
+The following AWS resources have not yet been created:
+
+```text
+SQS processing queue
+SQS dead-letter queue
+Lambda ingestion function
+Lambda worker function
+EventBridge schedule
+Lambda IAM roles
+SQS redrive policy
+CloudWatch alarms
+```
+
+---
+
+## Cost-Control Requirements
+
+AWS cost control is mandatory.
+
+Current rules:
+
+- Keep RDS stopped when live database testing is not required
+- Avoid NAT Gateway usage
+- Prefer serverless and pay-per-use services
+- Avoid continuously running EC2 instances
+- Use mocked tests before live AWS integration
+- Start with one development queue and one dead-letter queue
+- Use conservative Lambda memory and timeout settings
+- Use a low ingestion schedule frequency during testing
+- Keep SQS batch sizes small initially
+- Verify all temporary resources after testing
+- Delete unused Lambda functions and queues
+- Check AWS Billing and Cost Explorer regularly
+- Remember that RDS storage charges continue while the instance is stopped
+- Remember that AWS may restart a stopped RDS instance after the maximum stop period
+
+---
+
+## Security Requirements
+
+The project follows these security rules:
+
+- Do not use the AWS root user for routine development
+- Require MFA for root and administrative identities
+- Use least-privilege IAM roles
+- Use a named AWS CLI profile
+- Do not store AWS access keys in project files
+- Do not commit `.env`
+- Do not store database passwords in source code
+- Use AWS Secrets Manager for database credentials
+- Keep Amazon S3 buckets private
+- Encrypt SQS queues
+- Restrict SQS publishing to the required queue
+- Restrict worker permissions to required resources
+- Avoid logging secrets
+- Configure a dead-letter queue before production use
+- Review staged files before every Git commit
+
+---
+
+## Documentation
+
+Detailed documentation is available in:
+
+```text
+docs/architecture.md
+docs/step-07-aws-storage-foundation.md
+docs/step-08-database-schema.md
+docs/step-09-ingestion-persistence.md
+docs/step-10-scheduled-decoupled-ingestion.md
+```
+
+---
+
+## Testing
+
+Run all Step 10 tests:
+
+```powershell
+python -m pytest `
+  tests\unit\test_message_contracts.py `
+  tests\unit\test_sqs_publisher.py `
+  tests\unit\test_queued_ingestion_dispatcher.py `
+  tests\unit\test_article_processing_worker.py `
+  tests\unit\test_lambda_handlers.py `
+  -v
+```
+
+Expected:
+
+```text
+33 passed
+```
+
+Run the complete unit-test suite:
+
+```powershell
+python -m pytest tests\unit -v
+```
+
+Compile the project:
+
+```powershell
+python -m compileall -q `
+  src `
+  scripts `
+  migrations `
+  tests\unit
+```
+
+Verify Step 10 imports:
+
+```powershell
+python -c "from src.messaging import ScheduledIngestionMessage, ArticleProcessingMessage, SqsMessagePublisher; from src.services import QueuedIngestionDispatcher, ArticleProcessingWorker; from src.lambda_handlers import ScheduledIngestionLambdaHandler, SqsArticleLambdaHandler; print('Step 10 imports successful')"
+```
+
+---
+
 ## Next Step
 
 The next development stage is:
 
-text
-Step 10 — Scheduled and Decoupled Ingestion
+```text
+Step 11 — AWS Queue and Lambda Infrastructure
+```
 
+Planned Step 11 flow:
 
-Planned Step 10 flow:
-
-mermaid
+```mermaid
 flowchart TD
-    A[EventBridge Scheduler] --> B[AWS Lambda Ingestion Trigger]
-    B --> C[GDELT and RSS Providers]
-    C --> D[Amazon S3 Raw Layer]
-    C --> E[Amazon SQS]
-    E --> F[Article Processing Worker]
-    F --> G[Amazon S3 Processed Layer]
-    F --> H[Amazon RDS PostgreSQL]
-    F --> I[Amazon S3 Rejected Layer]
-    B --> J[CloudWatch Logs]
+    A[Cost and Security Review] --> B[SQS Dead-Letter Queue]
+    B --> C[SQS Processing Queue]
+    C --> D[Queue Redrive Policy]
+
+    D --> E[Lambda Ingestion Function]
+    D --> F[Lambda Worker Function]
+
+    G[EventBridge Scheduler] --> E
+
+    E --> C
+    C --> F
+
+    F --> H[Amazon S3]
+    F --> I[Amazon RDS PostgreSQL]
+
+    E --> J[CloudWatch Logs]
     F --> J
 
+    C --> K[Queue Depth Alarm]
+    B --> L[Dead-Letter Queue Alarm]
+```
 
-Before creating Step 10 AWS resources, the implementation must:
+Before Step 11 creates AWS resources, the implementation must:
 
-* Estimate the expected monthly cost
-* Select the lowest-cost practical configuration
-* Avoid unnecessary always-running infrastructure
-* Include shutdown and deletion commands
-* Verify that no temporary resources remain active
+- Estimate expected monthly cost
+- Confirm the development AWS region
+- Use one standard processing queue
+- Use one dead-letter queue
+- Avoid NAT Gateway usage
+- Use least-privilege IAM roles
+- Keep RDS stopped until a controlled database test
+- Add deletion commands for every created resource
+- Verify that no unexpected chargeable resource remains active
