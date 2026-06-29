@@ -603,23 +603,271 @@ The project supports planned user personalization through:
 * Future Top 10 trending stories for each selected country
 * Future personalized country and state dashboards
 
+## Project Progress
+
+The World News AI project has completed Steps 1 through 9.
+
+### Completed Steps
+
+1. Project foundation and folder structure
+2. Application configuration and environment management
+3. Structured logging and shared utilities
+4. Core news models and validation
+5. GDELT news ingestion
+6. RSS and Atom feed ingestion
+7. AWS storage and PostgreSQL foundation
+8. Database schema, migrations, repositories, and India location data
+9. Provider-to-storage ingestion persistence pipeline
+
+---
+
+## Current Features
+
+The project currently supports:
+
+* GDELT news collection
+* RSS and Atom feed collection
+* Article validation and normalization
+* Original provider-response preservation
+* Raw news storage in Amazon S3
+* Processed article storage in Amazon S3
+* Rejected-record storage in Amazon S3
+* PostgreSQL article persistence
+* News-source creation and reuse
+* Duplicate detection by URL
+* Duplicate detection by content hash
+* Country relevance mappings
+* Indian-state relevance mappings
+* Batch ingestion statistics
+* Per-record failure handling
+* Provider ingestion coordination
+* Alembic database migrations
+* India state and Union Territory seed data
+* User favorite-country storage
+* User favorite-state storage
+* State Top 10 ranking storage
+* Mocked unit testing without live AWS usage
+
+---
+
+## Current Architecture
+
+```mermaid
+flowchart TD
+    A[GDELT API] --> B[GDELT Provider]
+    C[RSS and Atom Feeds] --> D[RSS Provider]
+
+    B --> E[ProviderFetchResult]
+    D --> E
+
+    E --> E1[Original Provider Payload]
+    E --> E2[Validated Articles]
+    E --> E3[Rejected Records]
+
+    E --> F[ProviderIngestionRunner]
+
+    F --> G[BatchIngestionCoordinator]
+
+    G --> H[IngestionPersistenceService]
+
+    H --> I[Amazon S3 Raw Layer]
+    H --> J[Amazon S3 Processed Layer]
+    H --> K[Amazon S3 Rejected Layer]
+    H --> L[Amazon RDS PostgreSQL]
+
+    L --> L1[News Sources]
+    L --> L2[Articles]
+    L --> L3[Country Mappings]
+    L --> L4[India Location Mappings]
+    L --> L5[User Preferences]
+    L --> L6[State Top 10 Rankings]
+
+    M[AWS Secrets Manager] --> N[SQLAlchemy Async Engine]
+    N --> L
+
+    O[Alembic] --> L
+```
+
+---
+
+## Step 9 Ingestion Flow
+
+```text
+News provider
+    ↓
+Original API or feed response
+    ↓
+Provider parsing and validation
+    ├── Valid record → Article
+    └── Invalid record → Rejected item
+    ↓
+ProviderIngestionRunner
+    ↓
+BatchIngestionCoordinator
+    ↓
+IngestionPersistenceService
+    ├── Raw response → Amazon S3
+    ├── Processed article → Amazon S3
+    ├── Rejected record → Amazon S3
+    ├── Article metadata → PostgreSQL
+    ├── Country mappings → PostgreSQL
+    └── Indian-state mappings → PostgreSQL
+```
+
+---
+
+## India News Features
+
+The current design includes:
+
+* Dedicated India News section
+* State and Union Territory catalog
+* District and city database structure
+* Article-to-state mappings
+* Article-to-district mappings
+* Article-to-city mappings
+* Favorite Indian-state selection
+* State-level news feeds
+* Top 10 trending news storage for every Indian state
+
+Automatic state, district, and city detection will be added in a later step.
+
+---
+
+## Personalization Features
+
+The planned personalization flow includes:
+
+* First-time user country selection
+* Maximum of two favorite countries
+* Favorite Indian-state selection
+* Personalized country news feeds
+* Top 10 trending news for each favorite country
+* State-specific Top 10 news feeds
+
+The database structures for these preferences are already implemented.
+
+---
+
+## AWS Services
+
+| AWS service           | Current status              | Purpose                                                    |
+| --------------------- | --------------------------- | ---------------------------------------------------------- |
+| Amazon S3             | Implemented                 | Raw, processed, rejected, curated, and social-card storage |
+| Amazon RDS PostgreSQL | Implemented                 | Application and news metadata                              |
+| AWS Secrets Manager   | Implemented                 | PostgreSQL credentials                                     |
+| AWS IAM               | Implemented for development | Controlled AWS access                                      |
+| AWS Lambda            | Planned                     | Serverless ingestion and processing                        |
+| Amazon SQS            | Planned                     | Decoupled article processing                               |
+| EventBridge Scheduler | Planned                     | Scheduled ingestion                                        |
+| Amazon CloudWatch     | Planned                     | Logs, metrics, and alarms                                  |
+| AWS Glue              | Planned                     | Large-scale PySpark processing                             |
+| Amazon Athena         | Planned                     | S3 data analysis                                           |
+
+---
+
+## Cost-Control Requirements
+
+AWS cost control is mandatory for this project.
+
+Current development rules:
+
+* Keep RDS stopped when live database testing is not required
+* Avoid NAT Gateways unless absolutely necessary
+* Prefer serverless and pay-per-use services
+* Avoid continuously running EC2 instances
+* Use mocked unit tests before live AWS integration tests
+* Verify that temporary resources are stopped or deleted
+* Regularly check AWS Billing and Cost Explorer
+* Remember that RDS storage charges continue while the instance is stopped
+* Remember that AWS may automatically restart a stopped RDS instance after the maximum stop period
+
+---
+
+## Security Requirements
+
+The project follows these security rules:
+
+* Do not use the AWS root user for development
+* Require MFA for root and administrative identities
+* Use a named AWS CLI profile
+* Do not store AWS access keys in project files
+* Do not commit `.env`
+* Do not store database passwords in source code
+* Use AWS Secrets Manager for database credentials
+* Keep Amazon S3 buckets private
+* Review staged files before every Git commit
+* Scan tracked files for credentials and secret ARNs
+
+---
+
+## Documentation
+
+Detailed implementation documentation is available in:
+
+text
+docs/architecture.md
+docs/step-07-aws-storage-foundation.md
+docs/step-08-database-schema.md
+docs/step-09-ingestion-persistence.md
+
+
+---
+
+## Testing
+
+Run the complete unit-test suite:
+
+powershell
+python -m pytest tests\unit -v
+
+
+Check all Python files:
+
+powershell
+python -m compileall -q 
+  src 
+  scripts 
+  migrations 
+  tests\unit
+
+
+Verify Step 9 imports:
+
+powershell
+python -c "from src.services import IngestionPersistenceService, BatchIngestionCoordinator, ProviderIngestionRunner; print('Step 9 service imports successful')"
+
+
+---
+
 ## Next Step
 
-### Step 9 — Ingestion Persistence Pipeline
+The next development stage is:
 
-Step 9 will connect the existing GDELT, RSS, and Atom ingestion providers to Amazon S3 and PostgreSQL.
+text
+Step 10 — Scheduled and Decoupled Ingestion
 
-Planned work:
 
-1. Save original provider responses to the Amazon S3 raw layer.
-2. Normalize provider records into the shared article model.
-3. Create or reuse news-source records.
-4. Detect duplicate articles using URLs and content hashes.
-5. Save valid articles to PostgreSQL.
-6. Save processed article JSON to Amazon S3.
-7. Store rejected records and rejection reasons in Amazon S3.
-8. Create article-country mappings.
-9. Create India state mappings.
-10. Add transaction and failure handling.
-11. Add ingestion-persistence unit tests.
-12. Run a live end-to-end ingestion test.
+Planned Step 10 flow:
+
+mermaid
+flowchart TD
+    A[EventBridge Scheduler] --> B[AWS Lambda Ingestion Trigger]
+    B --> C[GDELT and RSS Providers]
+    C --> D[Amazon S3 Raw Layer]
+    C --> E[Amazon SQS]
+    E --> F[Article Processing Worker]
+    F --> G[Amazon S3 Processed Layer]
+    F --> H[Amazon RDS PostgreSQL]
+    F --> I[Amazon S3 Rejected Layer]
+    B --> J[CloudWatch Logs]
+    F --> J
+
+
+Before creating Step 10 AWS resources, the implementation must:
+
+* Estimate the expected monthly cost
+* Select the lowest-cost practical configuration
+* Avoid unnecessary always-running infrastructure
+* Include shutdown and deletion commands
+* Verify that no temporary resources remain active

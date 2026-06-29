@@ -1,5 +1,4 @@
-
-"""GDELT news provider implementation."""
+from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
@@ -24,6 +23,10 @@ from src.ingestion.exceptions import (
 from src.ingestion.http_client import (
     AsyncNewsHttpClient,
     JsonResponse,
+)
+from src.ingestion.provider_result import (
+    ProviderFetchResult,
+    ProviderRejectedItem,
 )
 from src.ingestion.providers.base import NewsProvider
 from src.models import (
@@ -64,16 +67,30 @@ class GdeltSearchRequest(BaseModel):
         ),
     )
 
+    @field_validator(
+        "timespan",
+        mode="before",
+    )
+    @classmethod
+    def normalize_timespan(
+        cls,
+        value: object,
+    ) -> object:
+        """Normalize timespan text before pattern validation."""
+
+        if isinstance(value, str):
+            return value.strip().lower()
+
+        return value
+
     @field_validator("timespan")
     @classmethod
     def validate_timespan(cls, value: str) -> str:
         """Ensure minute searches cover at least 15 minutes."""
 
-        normalized_value = value.lower()
-
-        if normalized_value.endswith("min"):
+        if value.endswith("min"):
             minute_value = int(
-                normalized_value.removesuffix("min")
+                value.removesuffix("min")
             )
 
             if minute_value < 15:
@@ -82,7 +99,7 @@ class GdeltSearchRequest(BaseModel):
                     "at least 15 minutes."
                 )
 
-        return normalized_value
+        return value
 
 
 class GdeltNewsProvider(NewsProvider):
@@ -130,7 +147,23 @@ class GdeltNewsProvider(NewsProvider):
         max_records: int = 25,
         timespan: str = "24h",
     ) -> list[Article]:
-        """Fetch articles from GDELT and validate them."""
+        """Fetch only validated GDELT articles."""
+
+        batch_result = await self.fetch_batch(
+            query=query,
+            max_records=max_records,
+            timespan=timespan,
+        )
+
+        return list(batch_result.articles)
+
+    async def fetch_batch(
+        self,
+        query: str,
+        max_records: int = 25,
+        timespan: str = "24h",
+    ) -> ProviderFetchResult:
+        """Fetch the raw response, valid articles, and rejections."""
 
         request = GdeltSearchRequest(
             query=query,
@@ -139,7 +172,7 @@ class GdeltNewsProvider(NewsProvider):
         )
 
         logger.info(
-            "Fetching GDELT articles query=%s "
+            "Fetching GDELT batch query=%s "
             "max_records=%s timespan=%s",
             request.query,
             request.max_records,
@@ -151,40 +184,81 @@ class GdeltNewsProvider(NewsProvider):
             params=self._build_request_params(request),
         )
 
-        raw_articles = self._extract_articles(
+        raw_articles = self._extract_raw_articles(
             response_data
         )
 
         articles: list[Article] = []
+        rejected_items: list[
+            ProviderRejectedItem
+        ] = []
 
         for raw_article in raw_articles:
+            if not isinstance(raw_article, dict):
+                rejected_items.append(
+                    ProviderRejectedItem(
+                        payload=raw_article,
+                        reason=(
+                            "GDELT article must be "
+                            "an object."
+                        ),
+                    )
+                )
+
+                logger.warning(
+                    "Rejecting non-object GDELT result "
+                    "value_type=%s",
+                    type(raw_article).__name__,
+                )
+
+                continue
+
             try:
-                article = self._map_article(raw_article)
+                article = self._map_article(
+                    raw_article
+                )
             except (
                 KeyError,
                 TypeError,
                 ValueError,
                 ValidationError,
             ) as exc:
+                rejected_items.append(
+                    ProviderRejectedItem(
+                        payload=raw_article,
+                        reason=str(exc),
+                        source_id=self._source_id(
+                            raw_article
+                        ),
+                    )
+                )
+
                 logger.warning(
-                    "Skipping invalid GDELT article "
+                    "Rejecting invalid GDELT article "
                     "error=%s raw_url=%s",
                     exc,
                     raw_article.get("url"),
                 )
+
                 continue
 
             articles.append(article)
 
         logger.info(
-            "GDELT ingestion completed "
-            "received=%s validated=%s skipped=%s",
+            "GDELT batch completed "
+            "received=%s validated=%s rejected=%s",
             len(raw_articles),
             len(articles),
-            len(raw_articles) - len(articles),
+            len(rejected_items),
         )
 
-        return articles
+        return ProviderFetchResult(
+            provider_name=self.provider_name,
+            raw_payload=response_data,
+            articles=tuple(articles),
+            received_count=len(raw_articles),
+            rejected_items=tuple(rejected_items),
+        )
 
     @staticmethod
     def _build_request_params(
@@ -201,45 +275,39 @@ class GdeltNewsProvider(NewsProvider):
             "format": "json",
         }
 
-    def _extract_articles(
+    def _extract_raw_articles(
         self,
         response_data: JsonResponse,
-    ) -> list[dict[str, Any]]:
-        """Extract the article list from a GDELT response."""
+    ) -> list[Any]:
+        """Extract all raw article values without discarding them."""
 
         if not isinstance(response_data, dict):
             raise NewsProviderResponseError(
-                "Top-level GDELT JSON must be an object.",
                 provider_name=self.provider_name,
+                detail=(
+                    "Top-level JSON must be an object."
+                ),
             )
 
         raw_articles = response_data.get("articles")
 
         if raw_articles is None:
             raise NewsProviderResponseError(
-                "The articles field is missing.",
                 provider_name=self.provider_name,
+                detail=(
+                    "The articles field is missing."
+                ),
             )
 
         if not isinstance(raw_articles, list):
             raise NewsProviderResponseError(
-                "The articles field must be a list.",
                 provider_name=self.provider_name,
+                detail=(
+                    "The articles field must be a list."
+                ),
             )
 
-        valid_dictionary_items: list[dict[str, Any]] = []
-
-        for raw_article in raw_articles:
-            if isinstance(raw_article, dict):
-                valid_dictionary_items.append(raw_article)
-            else:
-                logger.warning(
-                    "Skipping non-object GDELT result "
-                    "value_type=%s",
-                    type(raw_article).__name__,
-                )
-
-        return valid_dictionary_items
+        return raw_articles
 
     def _map_article(
         self,
@@ -269,15 +337,19 @@ class GdeltNewsProvider(NewsProvider):
 
         source_country_code = (
             self._country_name_to_code(
-                raw_article.get("sourcecountry")
+                raw_article.get(
+                    "sourcecountry"
+                )
             )
         )
 
         source = NewsSource(
             name=domain,
             source_type=SourceType.GDELT,
-            homepage_url=self._build_homepage_url(
-                article_url
+            homepage_url=(
+                self._build_homepage_url(
+                    article_url
+                )
             ),
             country_code=source_country_code,
         )
@@ -289,14 +361,36 @@ class GdeltNewsProvider(NewsProvider):
                 raw_article.get("socialimage")
             ),
             source=source,
-            published_at=self._parse_gdelt_datetime(
-                seen_date
+            published_at=(
+                self._parse_gdelt_datetime(
+                    seen_date
+                )
             ),
-            primary_category=NewsCategory.GENERAL,
-            language_code=self._language_to_code(
-                raw_article.get("language")
+            primary_category=(
+                NewsCategory.GENERAL
+            ),
+            language_code=(
+                self._language_to_code(
+                    raw_article.get("language")
+                )
             ),
         )
+
+    @staticmethod
+    def _source_id(
+        raw_article: dict[str, Any],
+    ) -> str | None:
+        """Return a stable provider identifier when available."""
+
+        raw_url = raw_article.get("url")
+
+        if isinstance(raw_url, str):
+            normalized_url = raw_url.strip()
+
+            if normalized_url:
+                return normalized_url
+
+        return None
 
     @staticmethod
     def _required_text(
@@ -330,7 +424,10 @@ class GdeltNewsProvider(NewsProvider):
 
         domain = raw_article.get("domain")
 
-        if isinstance(domain, str) and domain.strip():
+        if (
+            isinstance(domain, str)
+            and domain.strip()
+        ):
             return domain.strip().lower()
 
         parsed_url = urlparse(article_url)
@@ -350,11 +447,15 @@ class GdeltNewsProvider(NewsProvider):
 
         parsed_url = urlparse(article_url)
 
-        if not parsed_url.scheme or not parsed_url.netloc:
+        if (
+            not parsed_url.scheme
+            or not parsed_url.netloc
+        ):
             return None
 
         return (
-            f"{parsed_url.scheme}://{parsed_url.netloc}"
+            f"{parsed_url.scheme}://"
+            f"{parsed_url.netloc}"
         )
 
     @staticmethod
@@ -373,13 +474,15 @@ class GdeltNewsProvider(NewsProvider):
 
         try:
             validated_url = (
-                HTTP_URL_ADAPTER.validate_python(
+                HTTP_URL_ADAPTER
+                .validate_python(
                     cleaned_value
                 )
             )
         except ValidationError:
             logger.warning(
-                "Ignoring invalid optional image URL url=%s",
+                "Ignoring invalid optional "
+                "image URL url=%s",
                 cleaned_value,
             )
             return None
@@ -412,12 +515,18 @@ class GdeltNewsProvider(NewsProvider):
                 continue
 
         try:
-            parsed_date = datetime.fromisoformat(
-                value.replace("Z", "+00:00")
+            parsed_date = (
+                datetime.fromisoformat(
+                    value.replace(
+                        "Z",
+                        "+00:00",
+                    )
+                )
             )
         except ValueError as exc:
             raise ValueError(
-                f"Unsupported GDELT date format: {value}"
+                "Unsupported GDELT date "
+                f"format: {value}"
             ) from exc
 
         if parsed_date.tzinfo is None:
@@ -425,7 +534,9 @@ class GdeltNewsProvider(NewsProvider):
                 tzinfo=timezone.utc
             )
 
-        return parsed_date.astimezone(timezone.utc)
+        return parsed_date.astimezone(
+            timezone.utc
+        )
 
     @staticmethod
     def _country_name_to_code(
@@ -447,8 +558,8 @@ class GdeltNewsProvider(NewsProvider):
             )
         except LookupError:
             logger.warning(
-                "Unable to map GDELT source country "
-                "country=%s",
+                "Unable to map GDELT source "
+                "country country=%s",
                 cleaned_value,
             )
             return None
@@ -470,8 +581,10 @@ class GdeltNewsProvider(NewsProvider):
             return "und"
 
         try:
-            language = pycountry.languages.lookup(
-                cleaned_value
+            language = (
+                pycountry.languages.lookup(
+                    cleaned_value
+                )
             )
         except LookupError:
             logger.warning(
@@ -497,4 +610,3 @@ class GdeltNewsProvider(NewsProvider):
         )
 
         return str(alpha_3).lower()
-

@@ -523,3 +523,161 @@ Amazon SQS            → Planned
 EventBridge Scheduler → Planned
 CloudWatch            → Planned
 ```
+## Current Architecture — Step 8
+
+Step 8 added the PostgreSQL schema, Alembic migrations, India location catalog, repository layer, user preferences, and state-level Top 10 ranking storage.
+
+```mermaid
+flowchart TD
+    A[GDELT Provider] --> C[News Validation]
+    B[RSS and Atom Providers] --> C
+
+    C --> D[Amazon S3 Data Lake]
+    C --> E[Database Repository Layer]
+
+    D --> D1[Raw News]
+    D --> D2[Processed News]
+    D --> D3[Rejected News]
+    D --> D4[Curated News]
+    D --> D5[Social Cards]
+
+    F[AWS Secrets Manager] --> G[SQLAlchemy Async Engine]
+    G --> E
+
+    E --> H[Amazon RDS PostgreSQL]
+
+    H --> H1[News Sources]
+    H --> H2[Articles]
+    H --> H3[Article Countries]
+    H --> H4[Indian States]
+    H --> H5[Districts and Cities]
+    H --> H6[User Preferences]
+    H --> H7[State Top 10 Rankings]
+
+    I[Alembic Migrations] --> H
+    J[India Seed Script] --> H4
+
+    K[Unit Tests] --> E
+    L[Live Repository Test] --> H
+```
+
+### Database Persistence Flow
+
+```text
+Provider response
+    ↓
+Validation and normalization
+    ↓
+Create or reuse news source
+    ↓
+Detect duplicate article
+    ↓
+Store article in PostgreSQL
+    ↓
+Create country and state mappings
+    ↓
+Use articles in feeds and rankings
+```
+
+### India News Data Flow
+
+```text
+India article
+    ↓
+Country mapping: IN
+    ↓
+State relevance detection
+    ↓
+Article-state mapping
+    ↓
+State news feed
+    ↓
+Top 10 state ranking
+```
+
+### Personalization Flow
+
+```text
+Application user
+    ├── Favorite country 1
+    ├── Favorite country 2
+    └── Favorite Indian states
+            ↓
+Personalized country and state news
+```
+
+### Database Tables
+
+```text
+news_sources
+articles
+article_labels
+article_countries
+indian_states
+districts
+cities
+article_states
+article_districts
+article_cities
+app_users
+user_favorite_countries
+user_favorite_states
+state_news_rankings
+```
+
+### Repository Layer
+
+```text
+NewsSourceRepository
+    └── News provider operations
+
+ArticleRepository
+    ├── Article persistence
+    ├── Duplicate lookup
+    ├── AI result updates
+    └── Country and state mappings
+
+IndiaLocationRepository
+    ├── States and Union Territories
+    ├── Districts
+    └── Cities
+
+UserPreferenceRepository
+    ├── Application users
+    ├── Two favorite countries
+    └── Favorite Indian states
+
+StateRankingRepository
+    ├── Ranking validation
+    ├── Top 10 replacement
+    └── Ranked article retrieval
+```
+
+### Current AWS Services
+
+```text
+Amazon S3             → Implemented
+Amazon RDS PostgreSQL → Implemented
+AWS Secrets Manager   → Implemented
+AWS IAM               → Implemented for development
+AWS Lambda            → Planned
+Amazon SQS            → Planned
+EventBridge Scheduler → Planned
+AWS Glue              → Planned
+Amazon Athena         → Planned
+Amazon CloudWatch     → Planned
+```
+
+### Next Architecture Stage
+
+Step 9 will connect the provider ingestion layer to the AWS storage and repository layers.
+
+```text
+GDELT, RSS, and Atom
+        ↓
+Ingestion persistence service
+        ├── Raw payload → Amazon S3
+        ├── Valid article → PostgreSQL
+        ├── Processed JSON → Amazon S3
+        └── Rejected record → Amazon S3
+```

@@ -1,51 +1,40 @@
 import asyncio
-import json
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from src.ingestion import (
-    GdeltNewsProvider,
-    GdeltSearchRequest,
+from src.ingestion.exceptions import (
     NewsProviderResponseError,
 )
-from src.ingestion.http_client import (
-    JsonResponse,
-    RequestParams,
-)
-from src.models import (
-    NewsCategory,
-    SourceType,
-)
-
-
-FIXTURE_FILE = (
-    Path(__file__).resolve().parents[1]
-    / "fixtures"
-    / "gdelt_response.json"
+from src.ingestion.providers.gdelt import (
+    GdeltNewsProvider,
+    GdeltSearchRequest,
 )
 
 
 class FakeHttpClient:
-    """Small fake client used for provider unit tests."""
+    """Return a fixed JSON-compatible response."""
 
     def __init__(
         self,
-        response_data: JsonResponse,
+        response_data: object,
     ) -> None:
         self.response_data = response_data
         self.last_url: str | None = None
-        self.last_params: RequestParams | None = None
+        self.last_params: dict[
+            str,
+            str | int,
+        ] | None = None
+        self.closed = False
 
     async def get_json(
         self,
+        *,
         url: str,
-        params: RequestParams | None = None,
-    ) -> JsonResponse:
-        """Return the predefined fake response."""
+        params: dict[str, str | int],
+    ) -> Any:
+        """Return the configured response."""
 
         self.last_url = url
         self.last_params = params
@@ -53,63 +42,163 @@ class FakeHttpClient:
         return self.response_data
 
     async def close(self) -> None:
-        """Match the real HTTP client interface."""
+        """Record that the client was closed."""
+
+        self.closed = True
 
 
-def load_gdelt_fixture() -> dict[str, Any]:
-    """Load the sample GDELT response."""
+def valid_raw_article(
+    *,
+    title: str = "India technology update",
+    url: str = "https://example.com/news/one",
+) -> dict[str, object]:
+    """Create one valid GDELT article payload."""
 
-    return json.loads(
-        FIXTURE_FILE.read_text(
-            encoding="utf-8",
-        )
-    )
+    return {
+        "title": title,
+        "url": url,
+        "seendate": "20260628T120000Z",
+        "domain": "example.com",
+        "sourcecountry": "India",
+        "language": "English",
+        "socialimage": (
+            "https://example.com/image.jpg"
+        ),
+    }
 
 
-def test_gdelt_search_request_accepts_valid_values() -> None:
-    """Confirm that valid GDELT search options are accepted."""
+def test_gdelt_search_request_accepts_valid_values(
+) -> None:
+    """Confirm valid search options are normalized."""
 
     request = GdeltSearchRequest(
-        query="renewable energy",
+        query="  India technology  ",
         max_records=50,
-        timespan="24h",
+        timespan="24H",
     )
 
-    assert request.query == "renewable energy"
+    assert request.query == "India technology"
     assert request.max_records == 50
     assert request.timespan == "24h"
 
 
-def test_gdelt_search_request_rejects_invalid_values() -> None:
-    """Confirm that invalid search settings are rejected."""
+def test_gdelt_search_request_rejects_invalid_values(
+) -> None:
+    """Confirm invalid search options are rejected."""
 
     with pytest.raises(ValidationError):
         GdeltSearchRequest(
             query="AI",
-            max_records=25,
-            timespan="24h",
         )
 
     with pytest.raises(ValidationError):
         GdeltSearchRequest(
-            query="renewable energy",
+            query="world news",
             max_records=251,
-            timespan="24h",
         )
 
     with pytest.raises(ValidationError):
         GdeltSearchRequest(
-            query="renewable energy",
-            max_records=25,
+            query="world news",
             timespan="10min",
         )
 
 
-def test_gdelt_provider_maps_and_skips_articles() -> None:
-    """Confirm that valid articles are mapped and invalid ones skipped."""
+def test_fetch_batch_preserves_raw_response_and_rejections(
+) -> None:
+    """Confirm raw data and rejected records are retained."""
+
+    raw_payload = {
+        "articles": [
+            valid_raw_article(),
+            {
+                "title": "",
+                "url": (
+                    "https://example.com/news/two"
+                ),
+                "seendate": "20260628T130000Z",
+            },
+            "invalid-non-object",
+        ],
+    }
+
+    fake_client = FakeHttpClient(raw_payload)
+
+    provider = GdeltNewsProvider(
+        http_client=fake_client,
+    )
+
+    result = asyncio.run(
+        provider.fetch_batch(
+            query="India technology",
+            max_records=20,
+            timespan="24h",
+        )
+    )
+
+    assert result.provider_name == "GDELT"
+    assert result.raw_payload is raw_payload
+    assert result.received_count == 3
+    assert len(result.articles) == 1
+    assert len(result.rejected_items) == 2
+
+    article = result.articles[0]
+
+    assert article.title == (
+        "India technology update"
+    )
+    assert str(article.url) == (
+        "https://example.com/news/one"
+    )
+    assert article.source.country_code == "IN"
+    assert article.language_code == "en"
+
+    assert (
+        "title cannot be empty"
+        in result.rejected_items[0].reason
+    )
+    assert result.rejected_items[
+        0
+    ].source_id == (
+        "https://example.com/news/two"
+    )
+
+    assert result.rejected_items[
+        1
+    ].payload == "invalid-non-object"
+    assert result.rejected_items[
+        1
+    ].source_id is None
+
+    assert fake_client.last_params == {
+        "query": "India technology",
+        "mode": "artlist",
+        "maxrecords": 20,
+        "timespan": "24h",
+        "sort": "datedesc",
+        "format": "json",
+    }
+
+
+def test_fetch_articles_returns_only_validated_articles(
+) -> None:
+    """Confirm the legacy method remains supported."""
 
     fake_client = FakeHttpClient(
-        load_gdelt_fixture()
+        {
+            "articles": [
+                valid_raw_article(),
+                {
+                    "title": "",
+                    "url": (
+                        "https://example.com/invalid"
+                    ),
+                    "seendate": (
+                        "20260628T130000Z"
+                    ),
+                },
+            ],
+        }
     )
 
     provider = GdeltNewsProvider(
@@ -118,92 +207,77 @@ def test_gdelt_provider_maps_and_skips_articles() -> None:
 
     articles = asyncio.run(
         provider.fetch_articles(
-            query="renewable energy",
-            max_records=5,
-            timespan="24h",
+            query="world news",
         )
     )
 
-    assert provider.provider_name == "GDELT"
-    assert len(articles) == 2
-
-    first_article = articles[0]
-
-    assert first_article.title == (
-        "India expands its renewable energy partnership"
-    )
-    assert first_article.source.name == "example.com"
-    assert first_article.source.source_type == SourceType.GDELT
-    assert first_article.source.country_code == "IN"
-    assert first_article.language_code == "en"
-    assert first_article.primary_category == NewsCategory.GENERAL
-    assert first_article.published_at == datetime(
-        2026,
-        6,
-        25,
-        14,
-        30,
-        tzinfo=timezone.utc,
+    assert len(articles) == 1
+    assert articles[0].title == (
+        "India technology update"
     )
 
-    second_article = articles[1]
 
-    assert second_article.source.name == "news.example.org"
-    assert second_article.source.country_code == "US"
-    assert second_article.image_url is None
-
-    assert fake_client.last_params is not None
-    assert fake_client.last_params["mode"] == "artlist"
-    assert fake_client.last_params["maxrecords"] == 5
-    assert fake_client.last_params["timespan"] == "24h"
-    assert fake_client.last_params["format"] == "json"
-
-
-def test_gdelt_provider_rejects_non_object_response() -> None:
-    """Confirm that a top-level JSON list is rejected."""
-
-    fake_client = FakeHttpClient(
-        [
-            {
-                "title": "Unexpected response",
-            }
-        ]
-    )
+def test_gdelt_provider_rejects_non_object_response(
+) -> None:
+    """Confirm the top-level response must be an object."""
 
     provider = GdeltNewsProvider(
-        http_client=fake_client,
-    )
-
-    with pytest.raises(NewsProviderResponseError):
-        asyncio.run(
-            provider.fetch_articles(
-                query="world news",
-            )
-        )
-
-
-def test_gdelt_provider_rejects_missing_articles_field() -> None:
-    """Confirm that a response without articles is rejected."""
-
-    fake_client = FakeHttpClient(
-        {
-            "status": "success",
-        }
-    )
-
-    provider = GdeltNewsProvider(
-        http_client=fake_client,
+        http_client=FakeHttpClient(
+            ["invalid"]
+        ),
     )
 
     with pytest.raises(
         NewsProviderResponseError
-    ) as error:
+    ):
         asyncio.run(
-            provider.fetch_articles(
+            provider.fetch_batch(
                 query="world news",
             )
         )
 
-    assert "articles field is missing" in str(
-        error.value
+
+def test_gdelt_provider_rejects_missing_articles_field(
+) -> None:
+    """Confirm a response without articles is rejected."""
+
+    provider = GdeltNewsProvider(
+        http_client=FakeHttpClient(
+            {
+                "status": "success",
+            }
+        ),
     )
+
+    with pytest.raises(
+        NewsProviderResponseError
+    ):
+        asyncio.run(
+            provider.fetch_batch(
+                query="world news",
+            )
+        )
+
+
+def test_gdelt_provider_rejects_non_list_articles_field(
+) -> None:
+    """Confirm the articles field must be a list."""
+
+    provider = GdeltNewsProvider(
+        http_client=FakeHttpClient(
+            {
+                "articles": {
+                    "title": "Not a list",
+                },
+            }
+        ),
+    )
+
+    with pytest.raises(
+        NewsProviderResponseError
+    ):
+        asyncio.run(
+            provider.fetch_batch(
+                query="world news",
+            )
+        )

@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import calendar
 import html
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
@@ -24,6 +27,10 @@ from src.ingestion.feed_sources import (
     get_feed_source,
 )
 from src.ingestion.http_client import AsyncNewsHttpClient
+from src.ingestion.provider_result import (
+    ProviderFetchResult,
+    ProviderRejectedItem,
+)
 from src.ingestion.providers.base import NewsProvider
 from src.models import (
     Article,
@@ -63,12 +70,21 @@ class RssFetchRequest(BaseModel):
         ),
     )
 
-    @field_validator("timespan")
+    @field_validator(
+        "timespan",
+        mode="before",
+    )
     @classmethod
-    def normalize_timespan(cls, value: str) -> str:
-        """Normalize the timespan to lowercase."""
+    def normalize_timespan(
+        cls,
+        value: object,
+    ) -> object:
+        """Normalize timespan text before pattern validation."""
 
-        return value.lower()
+        if isinstance(value, str):
+            return value.strip().lower()
+
+        return value
 
 
 class HtmlTextExtractor(HTMLParser):
@@ -177,7 +193,6 @@ def timespan_to_timedelta(value: str) -> timedelta:
     number_text = normalized_value[
         : -len(suffix)
     ]
-
     amount = int(number_text)
 
     if suffix == "min":
@@ -198,6 +213,33 @@ def timespan_to_timedelta(value: str) -> timedelta:
     raise ValueError(
         f"Unsupported timespan: {value}"
     )
+
+
+def json_safe_value(value: object) -> object:
+    """Convert parsed feed values into JSON-safe values."""
+
+    if value is None or isinstance(
+        value,
+        (str, int, float, bool),
+    ):
+        return value
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): json_safe_value(item)
+            for key, item in value.items()
+        }
+
+    if isinstance(value, (list, tuple)):
+        return [
+            json_safe_value(item)
+            for item in value
+        ]
+
+    return str(value)
 
 
 class RssNewsProvider(NewsProvider):
@@ -259,7 +301,23 @@ class RssNewsProvider(NewsProvider):
         max_records: int = 25,
         timespan: str = "7d",
     ) -> list[Article]:
-        """Download, parse, filter, deduplicate, and validate entries."""
+        """Return only validated RSS or Atom articles."""
+
+        batch_result = await self.fetch_batch(
+            query=query,
+            max_records=max_records,
+            timespan=timespan,
+        )
+
+        return list(batch_result.articles)
+
+    async def fetch_batch(
+        self,
+        query: str = "",
+        max_records: int = 25,
+        timespan: str = "7d",
+    ) -> ProviderFetchResult:
+        """Return raw XML, valid articles, and rejected entries."""
 
         request = RssFetchRequest(
             query=query,
@@ -273,7 +331,7 @@ class RssNewsProvider(NewsProvider):
         )
 
         logger.info(
-            "Fetching RSS feed source_id=%s "
+            "Fetching RSS batch source_id=%s "
             "source_name=%s max_records=%s timespan=%s",
             self._feed_source.source_id,
             self._feed_source.name,
@@ -285,11 +343,24 @@ class RssNewsProvider(NewsProvider):
             url=str(self._feed_source.feed_url)
         )
 
-        parsed_feed = feedparser.parse(
-            response.content
+        raw_content = bytes(response.content)
+        raw_text = raw_content.decode(
+            "utf-8",
+            errors="replace",
         )
 
-        self._validate_parsed_feed(parsed_feed)
+        parsed_feed = feedparser.parse(
+            raw_content
+        )
+
+        self._validate_parsed_feed(
+            parsed_feed
+        )
+
+        entries = parsed_feed.get(
+            "entries",
+            [],
+        )
 
         cutoff_time = (
             current_utc_time()
@@ -299,38 +370,62 @@ class RssNewsProvider(NewsProvider):
         )
 
         articles: list[Article] = []
+        rejected_items: list[
+            ProviderRejectedItem
+        ] = []
         seen_urls: set[str] = set()
 
-        skipped_count = 0
         filtered_count = 0
         duplicate_count = 0
 
-        for entry in parsed_feed.entries:
+        for entry in entries:
             if len(articles) >= effective_limit:
                 break
 
             if not isinstance(entry, dict):
-                skipped_count += 1
+                rejected_items.append(
+                    ProviderRejectedItem(
+                        payload=json_safe_value(
+                            entry
+                        ),
+                        reason=(
+                            "Feed entry must be an object."
+                        ),
+                    )
+                )
                 continue
 
             try:
-                article = self._map_entry(entry)
+                article = self._map_entry(
+                    entry
+                )
             except (
                 KeyError,
                 TypeError,
                 ValueError,
                 ValidationError,
             ) as exc:
-                skipped_count += 1
+                rejected_items.append(
+                    ProviderRejectedItem(
+                        payload=json_safe_value(
+                            entry
+                        ),
+                        reason=str(exc),
+                        source_id=(
+                            self._entry_source_id(
+                                entry
+                            )
+                        ),
+                    )
+                )
 
                 logger.warning(
-                    "Skipping invalid feed entry "
+                    "Rejecting invalid feed entry "
                     "source_id=%s error=%s link=%s",
                     self._feed_source.source_id,
                     exc,
                     entry.get("link"),
                 )
-
                 continue
 
             normalized_url = str(article.url)
@@ -344,7 +439,6 @@ class RssNewsProvider(NewsProvider):
                     self._feed_source.source_id,
                     normalized_url,
                 )
-
                 continue
 
             if article.published_at < cutoff_time:
@@ -361,20 +455,51 @@ class RssNewsProvider(NewsProvider):
             seen_urls.add(normalized_url)
             articles.append(article)
 
+        feed_version = str(
+            parsed_feed.get("version", "")
+        ).strip().lower()
+
+        raw_payload = {
+            "source_id": (
+                self._feed_source.source_id
+            ),
+            "source_name": (
+                self._feed_source.name
+            ),
+            "feed_url": str(
+                self._feed_source.feed_url
+            ),
+            "feed_version": feed_version,
+            "query": request.query,
+            "timespan": request.timespan,
+            "content_length": len(
+                raw_content
+            ),
+            "content": raw_text,
+        }
+
         logger.info(
-            "RSS ingestion completed "
+            "RSS batch completed "
             "source_id=%s received=%s "
-            "validated=%s skipped=%s "
+            "validated=%s rejected=%s "
             "filtered=%s duplicates=%s",
             self._feed_source.source_id,
-            len(parsed_feed.entries),
+            len(entries),
             len(articles),
-            skipped_count,
+            len(rejected_items),
             filtered_count,
             duplicate_count,
         )
 
-        return articles
+        return ProviderFetchResult(
+            provider_name=self.provider_name,
+            raw_payload=raw_payload,
+            articles=tuple(articles),
+            received_count=len(entries),
+            rejected_items=tuple(
+                rejected_items
+            ),
+        )
 
     def _validate_parsed_feed(
         self,
@@ -392,7 +517,9 @@ class RssNewsProvider(NewsProvider):
                 "The parsed feed entries field "
                 "must be a list.",
                 provider_name=self.provider_name,
-                source_id=self._feed_source.source_id,
+                source_id=(
+                    self._feed_source.source_id
+                ),
             )
 
         if parsed_feed.get("bozo"):
@@ -413,7 +540,9 @@ class RssNewsProvider(NewsProvider):
                     "and returned no entries: "
                     f"{parsing_error}",
                     provider_name=self.provider_name,
-                    source_id=self._feed_source.source_id,
+                    source_id=(
+                        self._feed_source.source_id
+                    ),
                 )
 
         feed_version = str(
@@ -425,7 +554,9 @@ class RssNewsProvider(NewsProvider):
                 "RSS feed format could not be identified "
                 "and the feed contains no entries.",
                 provider_name=self.provider_name,
-                source_id=self._feed_source.source_id,
+                source_id=(
+                    self._feed_source.source_id
+                ),
             )
 
         if not feed_version:
@@ -493,11 +624,9 @@ class RssNewsProvider(NewsProvider):
         description = self._extract_description(
             entry
         )
-
         content = self._extract_content(
             entry
         )
-
         published_at = self._extract_datetime(
             entry
         )
@@ -509,7 +638,8 @@ class RssNewsProvider(NewsProvider):
                 self._feed_source.homepage_url
             ),
             country_code=(
-                self._feed_source.source_country_code
+                self._feed_source
+                .source_country_code
             ),
         )
 
@@ -531,12 +661,37 @@ class RssNewsProvider(NewsProvider):
             ),
             published_at=published_at,
             primary_category=(
-                self._feed_source.default_category
+                self._feed_source
+                .default_category
             ),
             language_code=(
-                self._feed_source.language_code
+                self._feed_source
+                .language_code
             ),
         )
+
+    @staticmethod
+    def _entry_source_id(
+        entry: dict[str, Any],
+    ) -> str | None:
+        """Return a stable feed entry identifier."""
+
+        for field_name in (
+            "id",
+            "guid",
+            "link",
+        ):
+            value = entry.get(
+                field_name
+            )
+
+            if (
+                isinstance(value, str)
+                and value.strip()
+            ):
+                return value.strip()
+
+        return None
 
     @staticmethod
     def _required_clean_text(
@@ -552,7 +707,9 @@ class RssNewsProvider(NewsProvider):
                 f"{field_name} must be a string."
             )
 
-        cleaned_value = clean_html_text(value)
+        cleaned_value = clean_html_text(
+            value
+        )
 
         if not cleaned_value:
             raise ValueError(
@@ -582,7 +739,8 @@ class RssNewsProvider(NewsProvider):
 
         try:
             validated_url = (
-                HTTP_URL_ADAPTER.validate_python(
+                HTTP_URL_ADAPTER
+                .validate_python(
                     cleaned_value
                 )
             )
@@ -609,7 +767,8 @@ class RssNewsProvider(NewsProvider):
 
         try:
             validated_url = (
-                HTTP_URL_ADAPTER.validate_python(
+                HTTP_URL_ADAPTER
+                .validate_python(
                     cleaned_value
                 )
             )
@@ -632,8 +791,10 @@ class RssNewsProvider(NewsProvider):
 
         for value in possible_values:
             if isinstance(value, str):
-                cleaned_value = clean_html_text(
-                    value
+                cleaned_value = (
+                    clean_html_text(
+                        value
+                    )
                 )
 
                 if cleaned_value:
@@ -645,11 +806,16 @@ class RssNewsProvider(NewsProvider):
     def _extract_content(
         entry: dict[str, Any],
     ) -> str | None:
-        """Extract the main article content from a feed entry."""
+        """Extract the main article content."""
 
-        content_items = entry.get("content")
+        content_items = entry.get(
+            "content"
+        )
 
-        if isinstance(content_items, list):
+        if isinstance(
+            content_items,
+            list,
+        ):
             for content_item in content_items:
                 if not isinstance(
                     content_item,
@@ -657,13 +823,20 @@ class RssNewsProvider(NewsProvider):
                 ):
                     continue
 
-                content_value = content_item.get(
-                    "value"
+                content_value = (
+                    content_item.get(
+                        "value"
+                    )
                 )
 
-                if isinstance(content_value, str):
-                    cleaned_content = clean_html_text(
-                        content_value
+                if isinstance(
+                    content_value,
+                    str,
+                ):
+                    cleaned_content = (
+                        clean_html_text(
+                            content_value
+                        )
                     )
 
                     if cleaned_content:
@@ -680,8 +853,8 @@ class RssNewsProvider(NewsProvider):
         author = entry.get("author")
 
         if isinstance(author, str):
-            cleaned_author = clean_html_text(
-                author
+            cleaned_author = (
+                clean_html_text(author)
             )
 
             if cleaned_author:
@@ -697,11 +870,15 @@ class RssNewsProvider(NewsProvider):
                 ):
                     continue
 
-                name = author_item.get("name")
+                name = author_item.get(
+                    "name"
+                )
 
                 if isinstance(name, str):
-                    cleaned_name = clean_html_text(
-                        name
+                    cleaned_name = (
+                        clean_html_text(
+                            name
+                        )
                     )
 
                     if cleaned_name:
@@ -743,29 +920,44 @@ class RssNewsProvider(NewsProvider):
         )
 
         for field_name in text_date_fields:
-            raw_value = entry.get(field_name)
+            raw_value = entry.get(
+                field_name
+            )
 
-            if not isinstance(raw_value, str):
+            if not isinstance(
+                raw_value,
+                str,
+            ):
                 continue
 
             try:
-                parsed_date = parsedate_to_datetime(
-                    raw_value
+                parsed_date = (
+                    parsedate_to_datetime(
+                        raw_value
+                    )
                 )
-            except (TypeError, ValueError):
+            except (
+                TypeError,
+                ValueError,
+            ):
                 try:
-                    parsed_date = datetime.fromisoformat(
-                        raw_value.replace(
-                            "Z",
-                            "+00:00",
+                    parsed_date = (
+                        datetime
+                        .fromisoformat(
+                            raw_value.replace(
+                                "Z",
+                                "+00:00",
+                            )
                         )
                     )
                 except ValueError:
                     continue
 
             if parsed_date.tzinfo is None:
-                parsed_date = parsed_date.replace(
-                    tzinfo=timezone.utc
+                parsed_date = (
+                    parsed_date.replace(
+                        tzinfo=timezone.utc
+                    )
                 )
 
             return parsed_date.astimezone(
@@ -787,7 +979,10 @@ class RssNewsProvider(NewsProvider):
             "media_content"
         )
 
-        if isinstance(media_content, list):
+        if isinstance(
+            media_content,
+            list,
+        ):
             for media_item in media_content:
                 if not isinstance(
                     media_item,
@@ -796,11 +991,17 @@ class RssNewsProvider(NewsProvider):
                     continue
 
                 media_type = str(
-                    media_item.get("type", "")
+                    media_item.get(
+                        "type",
+                        "",
+                    )
                 ).lower()
 
                 medium = str(
-                    media_item.get("medium", "")
+                    media_item.get(
+                        "medium",
+                        "",
+                    )
                 ).lower()
 
                 if (
@@ -812,8 +1013,12 @@ class RssNewsProvider(NewsProvider):
                 ):
                     continue
 
-                image_url = self._optional_http_url(
-                    media_item.get("url")
+                image_url = (
+                    self._optional_http_url(
+                        media_item.get(
+                            "url"
+                        )
+                    )
                 )
 
                 if image_url:
@@ -823,7 +1028,10 @@ class RssNewsProvider(NewsProvider):
             "media_thumbnail"
         )
 
-        if isinstance(media_thumbnail, list):
+        if isinstance(
+            media_thumbnail,
+            list,
+        ):
             for thumbnail in media_thumbnail:
                 if not isinstance(
                     thumbnail,
@@ -831,14 +1039,20 @@ class RssNewsProvider(NewsProvider):
                 ):
                     continue
 
-                image_url = self._optional_http_url(
-                    thumbnail.get("url")
+                image_url = (
+                    self._optional_http_url(
+                        thumbnail.get(
+                            "url"
+                        )
+                    )
                 )
 
                 if image_url:
                     return image_url
 
-        enclosures = entry.get("enclosures")
+        enclosures = entry.get(
+            "enclosures"
+        )
 
         if isinstance(enclosures, list):
             for enclosure in enclosures:
@@ -849,20 +1063,28 @@ class RssNewsProvider(NewsProvider):
                     continue
 
                 enclosure_type = str(
-                    enclosure.get("type", "")
+                    enclosure.get(
+                        "type",
+                        "",
+                    )
                 ).lower()
 
                 if (
                     enclosure_type
-                    and not enclosure_type.startswith(
-                        "image/"
-                    )
+                    and not enclosure_type
+                    .startswith("image/")
                 ):
                     continue
 
-                image_url = self._optional_http_url(
-                    enclosure.get("href")
-                    or enclosure.get("url")
+                image_url = (
+                    self._optional_http_url(
+                        enclosure.get(
+                            "href"
+                        )
+                        or enclosure.get(
+                            "url"
+                        )
+                    )
                 )
 
                 if image_url:
@@ -877,7 +1099,9 @@ class RssNewsProvider(NewsProvider):
     ) -> bool:
         """Apply an optional local text filter."""
 
-        normalized_query = query.strip().casefold()
+        normalized_query = (
+            query.strip().casefold()
+        )
 
         if not normalized_query:
             return True
@@ -890,4 +1114,7 @@ class RssNewsProvider(NewsProvider):
             ]
         ).casefold()
 
-        return normalized_query in searchable_text
+        return (
+            normalized_query
+            in searchable_text
+        )
